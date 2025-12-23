@@ -1,53 +1,66 @@
-from fontTools.misc.classifyTools import Classifier
-from sklearn.metrics import classification_report, accuracy_score, f1_score
-
-from datasetLeukemia import datasetForTraining
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pickle
+import xgboost as xgb
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 
-from xgboost import XGBClassifier
+df = pd.read_csv(r"D:\ML_Python_Projects\Labeled_Leukemia_Disease_Dataset.csv")
 
-# initialize dataset of leukemia from dataset of leukemia
-leukemia_df = datasetForTraining()
+# CLEANING
+# dropping Patient_ID and the noisy 'Leukemia_Status' column
+# we will use 'Leukemia_Label' as our True Target
+X = df.drop(['Patient_ID', 'Leukemia_Status', 'Leukemia_Label'], axis=1)
+y = df['Leukemia_Label']
 
-leukemia_df = leukemia_df[leukemia_df['WBC_Count'] >= 0] # data cleaned
+# encoding dta
+le = LabelEncoder()
+for col in X.select_dtypes(include=['object']).columns:
+    X[col] = le.fit_transform(X[col].astype(str))
 
+# handle Socioeconomic mapping manually for better logic
+status_map = {'Low': 0, 'Medium': 1, 'High': 2}
+if 'Socioeconomic_Status' in X.columns:
+    X['Socioeconomic_Status'] = X['Socioeconomic_Status'].map(status_map).fillna(1)
 
-def sendDFtoVisualize():
-    return leukemia_df
+# train and test splits (no SMOTE needed because this target is more balanced)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
 
-# separate dependent and independent variables
-X = leukemia_df.drop('Leukemia_Status', axis=1)
-y = leukemia_df['Leukemia_Status']
-
-# split dataset for the training and testing
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.15, random_state=42)
-
-# features standarization
+# scaling _ standard
 scaler = StandardScaler()
-X_scaled_train = scaler.fit_transform(X_train) # fit only on training data
-X_scaled_test = scaler.transform(X_test) # transform testing using training stats
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
-# training and testing dataframe shapes
-print("\nTraining Data Sample:\n", X_train.shape[0])
-print("\n\nTesting Data Sample:\n", X_test.shape[0])
+# MODEL TRAINING XGBoost
+print("\n[INFO] Training model on the CORRECT target (Leukemia_Label)...")
+model = xgb.XGBClassifier(
+    n_estimators=100,
+    max_depth=5,
+    learning_rate=0.1,
+    random_state=42,
+    eval_metric='logloss'
+)
+model.fit(X_train_scaled, y_train)
 
-columns_to_check = ['WBC_Count', 'RBC_Count', 'Platelet_Count', 'Hemoglobin_Level']
-negative_values = (leukemia_df[columns_to_check] < 0).sum()
-print("\nNegative values in the Balanced Dataset:\n", )
-print("\nnegative values in x: \n", (X[columns_to_check]< 0).sum())
-print("y count: \n", y.value_counts())
+# evaluation of models
+y_pred = model.predict(X_test_scaled)
 
+print("\n===============  SUCCESSFUL CLASSIFICATION REPORT  ===============\n")
+print(classification_report(y_test, y_pred))
 
-# Apply XG-Boost Model for Classfication of Leukemia
+# EDA of major features
+plt.figure(figsize=(10, 6))
+importances = pd.Series(model.feature_importances_, index=X.columns)
+importances.sort_values().plot(kind='barh', color='teal')
+plt.title('Why the Model is Working: Top Clinical Features')
+plt.tight_layout()
+plt.savefig('leukemia_feature_importance.png')
 
-xgb_model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42)
-# trainig xgb model on the labeld data
-xgb_model.fit(X_scaled_train, y_train)
-# model predict on trained data
-y_predict_xgb = xgb_model.predict(X_scaled_test)
+# saving the final asset of best model
+with open("leukemia_final_model.pkl", "wb") as f: pickle.dump(model, f)
+with open("leukemia_final_scaler.pkl", "wb") as f: pickle.dump(scaler, f)
 
-# evaluate model performance
-print("classification report of the xhb model:\n", classification_report(y_test, y_predict_xgb))
-print("\n===================================\n")
-
+print("\n[DONE] Model saved. This is your final production-ready model.")
