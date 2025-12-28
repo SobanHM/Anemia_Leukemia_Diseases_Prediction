@@ -61,7 +61,7 @@ Primary Diagnostic Driver: Bone Marrow Blasts (Strong separation between ~30% in
 
 > ## Anemia Detection (LightGBM)
 > 
-A robust classifier for oxygen-carrying capacity deficiencies based on Red Blood Cell (RBC) indices.
+A robust classifier for oxygen-carrying capacity deficiencies based on Red Blood Cell (RBC) indices and other.
 
 Accuracy: 100%
 
